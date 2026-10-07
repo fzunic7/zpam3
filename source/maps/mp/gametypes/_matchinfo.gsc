@@ -507,9 +507,27 @@ kickNotAllowedPlayer()
 		if (self.pers["matchinfo_notAllowedChecks"] >= 3)
 		{
 			if (notLoggedIn)
-				iprintln(self.name + "^7 was kicked: ^1not logged into the match");
+				reason = "not logged into the match";
 			else
-				iprintln(self.name + "^7 was kicked: ^1not assigned to any team in the match");
+				reason = "not assigned to any team in the match";
+
+			// Kick message cannot be customized, so show reason before kick
+			self iprintlnbold("^1You are being kicked: " + reason);
+
+			wait level.fps_multiplier * 3;
+
+			// Player logged in in the meantime
+			if (self matchPlayerIsAllowed())
+			{
+				self.pers["matchinfo_notAllowedChecks"] = 0;
+				continue;
+			}
+
+			// Kick was disabled, match was canceled or player left team in the meantime
+			if (!level.scr_matchinfo_kick_not_allowed || !matchIsActivated() || (self.pers["team"] != "allies" && self.pers["team"] != "axis"))
+				continue;
+
+			iprintln(self.name + "^7 was kicked: ^1" + reason);
 
 			kick(self getEntityNumber());
 			return;
