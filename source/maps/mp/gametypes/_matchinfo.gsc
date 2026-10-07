@@ -17,6 +17,7 @@ Init()
 
 	registerCvar("scr_matchinfo", "INT", 0, 0, 2);					// level.scr_matchinfo
 	registerCvarEx("I", "scr_matchinfo_reset", "BOOL", 0);
+	registerCvar("scr_matchinfo_kick_not_allowed", "BOOL", 1);	// level.scr_matchinfo_kick_not_allowed
 
 	addEventListener("onConnected",     ::onConnected);
 
@@ -416,6 +417,7 @@ onCvarChanged(cvar, value, isRegisterTime)
 	switch(cvar)
 	{
 		case "scr_matchinfo": level.scr_matchinfo = value; return true;
+		case "scr_matchinfo_kick_not_allowed": level.scr_matchinfo_kick_not_allowed = value; return true;
 		case "scr_matchinfo_reset":
 		{
 			if (value == 1)
@@ -451,6 +453,67 @@ onConnecting(firstTime) {
 }
 
 
+// Kick player in team that is not allowed to play in the match (not logged in via /match login or not assigned to any team)
+// Player is warned 2 times every 5 seconds, then kicked
+kickNotAllowedPlayer()
+{
+	self endon("disconnect");
+
+	// Saved in pers to avoid reset of warnings on map_restart
+	if (!isDefined(self.pers["matchinfo_notAllowedChecks"]))
+		self.pers["matchinfo_notAllowedChecks"] = 0;
+
+	for(;;)
+	{
+		wait level.fps_multiplier * 5;
+
+		if (!level.scr_matchinfo_kick_not_allowed || !matchIsActivated())
+			continue;
+
+		// Bots added by zpam for testing
+		if (isDefined(self.pers["isBot"]) && self.pers["isBot"])
+			continue;
+
+		// Only players in team are checked (spectators and streamers are allowed)
+		if (!isDefined(self.pers["team"]) || (self.pers["team"] != "allies" && self.pers["team"] != "axis"))
+			continue;
+
+		// Player may login via /match login after connect
+		if (self matchPlayerIsAllowed())
+		{
+			self.pers["matchinfo_notAllowedChecks"] = 0;
+			continue;
+		}
+
+		self.pers["matchinfo_notAllowedChecks"]++;
+
+		notLoggedIn = (self matchPlayerGetData("uuid") == "");
+
+		if (self.pers["matchinfo_notAllowedChecks"] >= 3)
+		{
+			if (notLoggedIn)
+				iprintln(self.name + "^7 was kicked: ^1not logged into the match");
+			else
+				iprintln(self.name + "^7 was kicked: ^1not assigned to any team in the match");
+
+			kick(self getEntityNumber());
+			return;
+		}
+
+		if (notLoggedIn)
+		{
+			self iprintlnbold("^1You are not logged into the match!");
+			self iprintlnbold("Login via ^3/match login <uuid>^7 or you will be kicked");
+		}
+		else
+		{
+			self iprintlnbold("^1You are not assigned to any team in the match!");
+			self iprintlnbold("Make sure you are logged in with correct uuid or you will be kicked");
+		}
+	}
+}
+
+
 iprint_to_team_players(text)
 {
 	players = getentarray("player", "classname");
@@ -468,6 +531,8 @@ iprint_to_team_players(text)
 onConnected()
 {
 	self endon("disconnect");
+
+	self thread kickNotAllowedPlayer();
 
 	// Ingame match info bar
 	if (!isDefined(self.pers["matchinfo_ingame"]))
