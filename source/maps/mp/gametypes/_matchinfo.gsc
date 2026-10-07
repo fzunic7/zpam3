@@ -17,7 +17,7 @@ Init()
 
 	registerCvar("scr_matchinfo", "INT", 0, 0, 2);					// level.scr_matchinfo
 	registerCvarEx("I", "scr_matchinfo_reset", "BOOL", 0);
-	registerCvar("scr_matchinfo_kick_not_allowed", "BOOL", 1);	// level.scr_matchinfo_kick_not_allowed
+	registerCvarEx("I", "scr_matchinfo_kick_not_allowed", "BOOL", 1);	// level.scr_matchinfo_kick_not_allowed
 
 	addEventListener("onConnected",     ::onConnected);
 
@@ -459,16 +459,23 @@ kickNotAllowedPlayer()
 {
 	self endon("disconnect");
 
-	// Saved in pers to avoid reset of warnings on map_restart
+	// Saved in pers to avoid reset of warnings on map_restart or by switching to spectator
 	if (!isDefined(self.pers["matchinfo_notAllowedChecks"]))
 		self.pers["matchinfo_notAllowedChecks"] = 0;
+
+	wasInTeam = false;
 
 	for(;;)
 	{
 		wait level.fps_multiplier * 5;
 
-		if (!level.scr_matchinfo_kick_not_allowed || !matchIsActivated())
+		// Disabled, no match or public mode (kick in public mode would also ban player for sv_kickBanTime)
+		if (!level.scr_matchinfo_kick_not_allowed || !matchIsActivated() || game["is_public_mode"])
+		{
+			self.pers["matchinfo_notAllowedChecks"] = 0;
+			wasInTeam = false;
 			continue;
+		}
 
 		// Bots added by zpam for testing
 		if (isDefined(self.pers["isBot"]) && self.pers["isBot"])
@@ -476,7 +483,10 @@ kickNotAllowedPlayer()
 
 		// Only players in team are checked (spectators and streamers are allowed)
 		if (!isDefined(self.pers["team"]) || (self.pers["team"] != "allies" && self.pers["team"] != "axis"))
+		{
+			wasInTeam = false;
 			continue;
+		}
 
 		// Player may login via /match login after connect
 		if (self matchPlayerIsAllowed())
@@ -484,6 +494,11 @@ kickNotAllowedPlayer()
 			self.pers["matchinfo_notAllowedChecks"] = 0;
 			continue;
 		}
+
+		// Player joined team again - make sure he is warned at least once before kick
+		if (!wasInTeam && self.pers["matchinfo_notAllowedChecks"] > 1)
+			self.pers["matchinfo_notAllowedChecks"] = 1;
+		wasInTeam = true;
 
 		self.pers["matchinfo_notAllowedChecks"]++;
 
@@ -500,17 +515,33 @@ kickNotAllowedPlayer()
 			return;
 		}
 
+		// Player may be added into team after connect - redownload match data (async, result is used in next check)
+		level thread redownloadMatchDataDebounced();
+
+		kickIn = (3 - self.pers["matchinfo_notAllowedChecks"]) * 5;
+
 		if (notLoggedIn)
 		{
 			self iprintlnbold("^1You are not logged into the match!");
-			self iprintlnbold("Login via ^3/match login <uuid>^7 or you will be kicked");
+			self iprintlnbold("Login via ^3/match login <uuid>^7 or you will be kicked in " + kickIn + " seconds");
 		}
 		else
 		{
 			self iprintlnbold("^1You are not assigned to any team in the match!");
-			self iprintlnbold("Make sure you are logged in with correct uuid or you will be kicked");
+			self iprintlnbold("Make sure you are logged in with correct uuid or you will be kicked in " + kickIn + " seconds");
 		}
 	}
+}
+
+// Redownload match data, multiple calls in short period of time are merged into one
+redownloadMatchDataDebounced()
+{
+	level notify("matchinfo_data_redownload");
+	level endon("matchinfo_data_redownload");
+
+	wait level.fps_multiplier * 1;
+
+	matchRedownloadData();
 }
 
 
