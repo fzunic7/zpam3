@@ -530,12 +530,12 @@ kickNotAllowedPlayer()
 		if (notLoggedIn)
 		{
 			self iprintlnbold("^1You are not logged into the match!");
-			self iprintlnbold("Login via ^3/match login <uuid>^7 or you will be kicked in " + kickIn + " seconds");
+			self iprintlnbold("Run the game via ^3Anticheat^7 or you will be kicked in " + kickIn + " seconds");
 		}
 		else
 		{
 			self iprintlnbold("^1You are not assigned to any team in the match!");
-			self iprintlnbold("Make sure you are logged in with correct uuid or you will be kicked in " + kickIn + " seconds");
+			self iprintlnbold("Run the game via ^3Anticheat^7 with correct account or you will be kicked in " + kickIn + " seconds");
 		}
 	}
 }
